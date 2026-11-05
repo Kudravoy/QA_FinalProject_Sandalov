@@ -1,4 +1,4 @@
-# Дипломный проект по автоматизации тестирования: проведите smoke-тестирование веб-приложения Tandoor
+# Итоговый проект по автотестированию: проведите smoke-тестирование веб-приложения Tandoor
 
 ## Описание проекта
 
@@ -48,8 +48,8 @@
 ### 1. Клонирование репозитория
 ```
 bash
-git clone https://gitlab.com/dmitriy_avl/QA_FinalProject_Avlov.git
-cd QA_FinalProject_Avlov
+git clone https://gitlab.com/dmitriy_avl/QA_FinalProject_Sandalov.git
+cd QA_FinalProject_Sandalov
 ```
 
 ### 2. Создание виртуального окружения
@@ -110,7 +110,7 @@ allure open allure-report
 ---
 ## Структура проекта
 ```plain
-QA_FinalProject_Avlov/
+QA_FinalProject_Sandalov/
 ├── api/
 │   └── client.py                    # API-клиент для работы с Tandoor
 ├── pages/
@@ -300,6 +300,4 @@ TANDOOR_PASSWORD=your_password_here
 
 ---
 ## Контакты
-GitHub: Dmitriy_Avl
-
-Репозиторий: https://gitlab.com/dmitriy_avl/QA_FinalProject_Avlov
+GitHub: Kudravoy
