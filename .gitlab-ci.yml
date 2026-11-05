@@ -1,0 +1,158 @@
+# Этапы выполнения
+stages:
+  - prepare
+  - test_api
+  - test_ui
+  - report
+  - pages
+
+default:
+  tags:
+    - docker
+  image: python:3.12
+
+# Переменные окружения
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  ALLURE_RESULTS: "allure-results"
+  HEADLESS: "true"
+
+# Кэширование зависимостей
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - .cache/pip
+    - .venv/
+
+# Подготовка окружения
+prepare:
+  stage: prepare
+  script:
+    - apt-get update -qq
+    - apt-get install -y -qq wget gnupg unzip curl
+    # Установка Chrome
+    - wget -q -O- https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor > /tmp/google-chrome.gpg
+    - install -o root -g root -m 644 /tmp/google-chrome.gpg /usr/share/keyrings/
+    - echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
+    - apt-get update -qq
+    - apt-get install -y -qq google-chrome-stable
+    # ChromeDriver (исправленный URL с конкретной версией)
+    - wget -q --tries=5 --timeout=30 https://storage.googleapis.com/chrome-for-testing-public/135.0.7049.84/linux64/chromedriver-linux64.zip
+    - unzip chromedriver-linux64.zip -d /tmp/
+    - mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver
+    - chmod +x /usr/local/bin/chromedriver
+    # Python окружение
+    - python -m venv .venv
+    - source .venv/bin/activate
+    - pip install --upgrade pip
+    - pip install -r requirements.txt || echo "requirements.txt not found"
+    - pip install allure-pytest pytest selenium requests python-dotenv
+    - mkdir -p screenshots ${ALLURE_RESULTS}/api ${ALLURE_RESULTS}/ui
+  artifacts:
+    paths:
+      - .venv/
+    expire_in: 1 hour
+  only:
+    - main
+
+# API tests
+api_tests:
+  stage: test_api
+  needs:
+    - prepare
+  script:
+    - source .venv/bin/activate
+    - echo "Running API tests..."
+    - pytest tests/test_api_client.py -v --alluredir=${ALLURE_RESULTS}/api || true
+  artifacts:
+    when: always
+    paths:
+      - ${ALLURE_RESULTS}/api
+    expire_in: 1 week
+  only:
+    - main
+
+# UI tests
+ui_tests:
+  stage: test_ui
+  needs:
+    - prepare
+  script:
+    - source .venv/bin/activate
+    # Устанавливаем последнюю версию Chrome
+    - apt-get update -qq
+    - apt-get install -y -qq wget gnupg unzip curl
+    - wget -q -O- https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor > /tmp/google-chrome.gpg
+    - install -o root -g root -m 644 /tmp/google-chrome.gpg /usr/share/keyrings/
+    - echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
+    - apt-get update -qq
+    - apt-get install -y -qq google-chrome-stable
+    # НЕ ставим chromedriver вручную — Selenium сам скачает нужную версию
+    # Запрещаем использовать системный chromedriver
+    - export PATH="/usr/local/bin:$PATH"
+    - export HEADLESS="true"
+    - export TANDOOR_URL="${TANDOOR_URL:-https://demo.tandoor.dev}"
+    - export TANDOOR_TOKEN="${TANDOOR_TOKEN}"
+    - echo "Running UI tests in headless mode..."
+    - echo "Chrome version:"
+    - google-chrome --version
+    # Позволяем Selenium самому скачать совместимый ChromeDriver
+    - echo "Allowing Selenium to download compatible ChromeDriver..."
+    - pytest tests/test_ui_login_page.py tests/test_ui_header_component.py tests/test_ui_meal_plan.py -v --alluredir=${ALLURE_RESULTS}/ui
+  artifacts:
+    when: always
+    paths:
+      - ${ALLURE_RESULTS}/ui
+      - screenshots/
+    expire_in: 1 week
+  only:
+    - main
+
+# Generate Allure report
+generate_report:
+  stage: report
+  needs:
+    - api_tests
+    - ui_tests
+  script:
+    - echo "Installing Allure..."
+    - apt-get update -qq
+    - apt-get install -y -qq default-jre wget
+    - wget -q https://github.com/allure-framework/allure2/releases/download/2.29.0/allure-2.29.0.tgz
+    - tar -zxvf allure-2.29.0.tgz -C /opt/
+    - ln -s /opt/allure-2.29.0/bin/allure /usr/local/bin/allure
+    - echo "Generating Allure report..."
+    - mkdir -p ${ALLURE_RESULTS}/merged
+    - cp -r ${ALLURE_RESULTS}/api/* ${ALLURE_RESULTS}/merged/ 2>/dev/null || echo "No API results"
+    - cp -r ${ALLURE_RESULTS}/ui/* ${ALLURE_RESULTS}/merged/ 2>/dev/null || echo "No UI results"
+    - allure generate ${ALLURE_RESULTS}/merged -o public --clean
+    - echo "Report generated in public folder"
+    - ls -la public/
+  artifacts:
+    paths:
+      - public/
+    expire_in: 30 days
+  only:
+    - main
+
+# Publish to GitLab Pages
+pages:
+  stage: pages
+  needs:
+    - generate_report
+  script:
+    - echo "Publishing Allure report to GitLab Pages..."
+    - |
+      if [ -d "public" ] && [ "$(ls -A public)" ]; then
+        echo "Report is ready for publishing"
+        du -sh public/
+        ls -la public/ | head -20
+      else
+        echo "Public folder is empty or does not exist"
+        exit 1
+      fi
+  artifacts:
+    paths:
+      - public/
+  only:
+    - main
