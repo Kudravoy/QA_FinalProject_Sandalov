@@ -48,7 +48,7 @@
 ### 1. Клонирование репозитория
 ```
 bash
-git clone https://gitlab.com/dmitriy_avl/QA_FinalProject_Sandalov.git
+git clone https://gitlab.com/kudravoy/QA_FinalProject_Sandalov.git
 cd QA_FinalProject_Sandalov
 ```
 
